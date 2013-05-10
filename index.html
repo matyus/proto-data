@@ -1,0 +1,258 @@
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="utf-8">
+    <title>JSON the Builder</title>
+    <style>
+      body {
+        font-family: Helvetica;
+        font-size: 100%;
+        line-height: 1.231;
+      }
+
+      .master {
+        border: 1px solid red;
+        float: left;
+        padding: 1em;
+        width: 300px;
+      }
+
+      .slave {
+        background-color: #ddd;
+        padding: 1em;
+        overflow: hidden;
+      }
+
+      fieldset {
+        border: 1px solid green;
+        margin: 1em;
+        padding: 2px;
+      }
+
+      fieldset label {
+        font-weight: bold;
+      }
+
+      .row {
+        border: 1px solid orange;
+        margin: 0;
+      }
+
+      .row > label {
+        display: inline-block;
+        font-size: .8em;
+        margin: 0;
+        text-align: right;
+        width: 80px;
+      }
+
+      .row > input[type="text"] {
+        display: inline-block;
+        margin: 0;
+        width: 120px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="master js-master">
+      <form>
+        <legend>Data Model</legend>
+        <fieldset class="js-obj"></fieldset>
+        <fieldset>
+          <fieldset class="row">
+            <input type="button" value="Add Key" class="js-add-key" />
+          </fieldset>
+        </fieldset>
+      </form>
+    </div>
+
+    <div class="slave js-slave">
+      <form>
+        <legend>Nodes</legend>
+        <fieldset class="js-obj"></fieldset>
+        <fieldset>
+          <fieldset class="row">
+            <input type="button" value="Add Node" class="js-add-node" />
+          </fieldset>
+        </fieldset>
+    </form>
+    </div>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>
+    <script src="http://ajax.cdnjs.com/ajax/libs/underscore.js/1.4.4/underscore-min.js"></script>
+    <script src="http://ajax.cdnjs.com/ajax/libs/backbone.js/1.0.0/backbone-min.js"></script>
+    <script src="backbone.localStorage.js"></script>
+    <script type="text/html" id="fieldset">
+      <label for="<%= inputId %>">
+        <%= labelName %>
+      </label>
+
+      <input type="<%= inputType %>" id="<%= inputId %>" name="<%= inputId %>" value="<%= inputValue %>" class="js-input" />
+    </script>
+
+    <script>
+      FieldsetModel = Backbone.Model.extend({
+        defaults : {
+          inputValue : '',
+          inputType  : 'text',
+          labelName  : 'key'
+        },
+        initialize: function(){
+          console.log('-----------------------------------------------------');
+          console.log('new FieldsetModel');
+        }
+      });
+
+      FieldsetView = Backbone.View.extend({
+        tagName: 'fieldset',
+        className: 'row',
+        template: _.template($('#fieldset').html()),
+        events:{
+          'click' : '_thing'
+        },
+        initialize: function(){
+        },
+        render: function(a,b,c){
+          console.log('SLAVE?!', this.options.slave);
+          var data;
+          if(this.options.slave){
+            data = {
+              inputId : this.model.cid + '_slave',
+              inputType: this.model.get('inputType'),
+              inputValue: '',
+              labelName: this.model.get('inputValue')
+            }
+          }else{
+            data = {
+              inputId : this.model.cid,
+              inputType: this.model.get('inputType'),
+              inputValue: this.model.get('inputValue'),
+              labelName: this.model.get('labelName')
+            }
+          }
+
+          this.$el.html(this.template(data));
+
+          return this;
+        },
+        _thing: function(){
+          console.log("I'm awake! "+ this.model.get('inputValue'));
+        }
+      });
+
+      FieldsetCollection = Backbone.Collection.extend({
+        model: FieldsetModel,
+        localStorage : new Backbone.LocalStorage('master'),
+        initialize : function(){
+          this.children = _([]);
+          this.on('add',this._fieldSetAdded);
+          console.log('FieldsetCollection');
+        },
+        _fieldSetAdded: function(model,collection,options){
+          console.log('this is added: ', model.get('inputValue'));
+          this.children.push(new FieldsetView({model: model}));
+        }
+      });
+
+      SlaveFieldsetCollection = Backbone.Collection.extend({
+        model: FieldsetModel,
+        localStorage : new Backbone.LocalStorage('slave'),
+        initialize : function(){
+          this.children = _([]);
+          this.listenTo(COLLECTION,'add',this._fieldSetAdded);
+          console.log('FieldsetCollection');
+
+        },
+        _fieldSetAdded: function(model,collection,options){
+          var mutate = {
+              inputId : model.cid + '_slave',
+              inputType: model.get('inputType'),
+              inputValue: '',
+              labelName: model.get('inputValue')
+          }
+          this.create(mutate);
+          this.children.push(new FieldsetView({model: model, slave: true}));
+        }
+      });
+
+      COLLECTION = new FieldsetCollection();
+      SLAVECOLLECTION = new SlaveFieldsetCollection();
+
+      COLLECTION.add(new FieldsetModel({
+        inputValue: 'thing 1'
+      }));
+
+      COLLECTION.add(new FieldsetModel({
+        inputValue: 'thing 2'
+      }));
+
+      COLLECTION.add(new FieldsetModel({
+        inputValue: 'thing 3'
+      }));
+
+      // SLAVECOLLECTION.add(new FieldsetModel);
+
+      MasterFields = Backbone.View.extend({
+        el: $('.js-master'),
+
+        events: {
+          'click' : '_thing'
+        },
+
+        initialize: function(){
+          this._fieldsets  = COLLECTION.children;
+          this._container = this.$('.js-obj');
+
+          this.listenTo(COLLECTION,'all',this.render);
+
+          this.render();
+        },
+
+        render: function(){
+          var self = this;
+
+          this._container.empty();
+
+          _(this._fieldsets).each(function(fieldset){
+            self._container.append(fieldset.render().el);
+          });
+        },
+        _thing: function(){
+          console.log('ouch!');
+        }
+      });
+
+      SlaveFields = Backbone.View.extend({
+        el: $('.js-slave'),
+
+        events: {
+          'click' : '_thing'
+        },
+
+        initialize: function(){
+          this._container = this.$('.js-obj');
+          this._fieldsets = SLAVECOLLECTION.children;
+
+          this.listenTo(COLLECTION, 'all', this.render);
+
+          this.render();
+        },
+        render: function(){
+          var self = this;
+
+          this._container.empty();
+
+          _(this._fieldsets).each(function(fieldset){
+            self._container.append(fieldset.render().el);
+          });
+        },
+        _thing: function(){
+          console.log('yes, master');
+        }
+      });
+
+      Master = new MasterFields;
+      Slave = new SlaveFields;
+
+    </script>
+  </body>
+  </html>
